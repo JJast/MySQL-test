@@ -18,9 +18,9 @@ NUM_SUBMISSIONS_PER_QUIZ = 50  # Total across all users, not per user
 # Connect to MySQL
 mydb = mysql.connector.connect(
   host="localhost",
-  user="yourusername",
-  password="yourpassword",
-  database="online_learning"
+  user="root",
+  password="",
+  database="online_learning" 
 )
 
 mycursor = mydb.cursor()
