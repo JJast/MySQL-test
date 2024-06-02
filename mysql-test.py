@@ -2,34 +2,49 @@ import mysql.connector
 from faker import Faker
 import random
 import time
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # Initialize Faker
 fake = Faker()
 
 # Constants for the amounts of data to generate
-NUM_USERS = 1000
-NUM_COURSES = 200
-NUM_ENROLLMENTS_PER_USER = 20
-NUM_LESSONS_PER_COURSE = 50
-NUM_QUIZZES_PER_LESSON = 20
-NUM_QUESTIONS_PER_QUIZ = 30
+NUM_USERS = 10
+NUM_COURSES = 20
+NUM_LESSONS_PER_COURSE = 5
+NUM_QUIZZES_PER_LESSON = 2
+NUM_QUESTIONS_PER_QUIZ = 3
+NUM_ENROLLMENTS_PER_USER = 2
 
 # Connect to MySQL
 mydb = mysql.connector.connect(
-  host="localhost",
-  port='3306',
-  user="root",
-  password="password",
-  database="mysql"
+    host="localhost",
+    port='3306',
+    user="root",
+    password="password",
+    database="mysql"
 )
 
 mycursor = mydb.cursor()
+
+timings = []
+
+def edit_number_of_operations(multiplication=1):
+    global NUM_USERS, NUM_COURSES, NUM_ENROLLMENTS_PER_USER, NUM_LESSONS_PER_COURSE, NUM_QUIZZES_PER_LESSON, NUM_QUESTIONS_PER_QUIZ
+
+    NUM_USERS = NUM_USERS * multiplication
+    NUM_COURSES = NUM_COURSES * multiplication
+    # NUM_ENROLLMENTS_PER_USER = NUM_ENROLLMENTS_PER_USER * multiplication
+    # NUM_LESSONS_PER_COURSE = NUM_LESSONS_PER_COURSE * multiplication
+    # NUM_QUIZZES_PER_LESSON = NUM_QUIZZES_PER_LESSON * multiplication
+    # NUM_QUESTIONS_PER_QUIZ = NUM_QUESTIONS_PER_QUIZ * multiplication
 
 def measure_time(operation_name, func):
     start_time = time.time()
     func()
     end_time = time.time()
     duration = end_time - start_time
+    timings.append((operation_name, duration))
     print(f"{operation_name} took {duration:.2f} seconds")
 
 def drop_tables():
@@ -105,19 +120,18 @@ def batch_insert(sql, values):
         print(f"Error: {err}")
         mydb.rollback()
 
-def insert_users():
+def insert_all_data():
+    # Insert users
     users = [(fake.uuid4(), fake.name(), fake.email(), random.choice(["student", "instructor"])) for _ in range(NUM_USERS)]
     batch_insert("INSERT INTO users (id, name, email, role) VALUES (%s, %s, %s, %s)", users)
     print("Users inserted successfully")
-
-def retrieve_users():
+    
+    # Retrieve users to get instructors
     mycursor.execute("SELECT * FROM users")
     users = mycursor.fetchall()
-    print(f"{len(users)} users retrieved successfully")
-    return users
-
-def insert_courses(users):
     instructors = [user[0] for user in users if user[3] == "instructor"]
+
+    # Insert courses
     courses = [(fake.uuid4(), fake.catch_phrase(), fake.text(), random.choice(instructors)) for _ in range(NUM_COURSES)]
     batch_insert("INSERT INTO courses (id, title, description, instructor) VALUES (%s, %s, %s, %s)", courses)
     
@@ -125,9 +139,11 @@ def insert_courses(users):
     quizzes = []
     questions = []
     
+    # Retrieve courses to get course IDs
     mycursor.execute("SELECT id FROM courses")
     course_ids = [row[0] for row in mycursor.fetchall()]
     
+    # Generate lessons, quizzes, and questions
     for course_id in course_ids:
         for _ in range(NUM_LESSONS_PER_COURSE):
             lesson_id = fake.uuid4()
@@ -141,48 +157,98 @@ def insert_courses(users):
                     question_id = fake.uuid4()
                     questions.append((question_id, quiz_id, fake.sentence(), fake.word()))
 
+    # Insert lessons, quizzes, and questions
     batch_insert("INSERT INTO lessons (id, course_id, title, content) VALUES (%s, %s, %s, %s)", lessons)
     batch_insert("INSERT INTO quizzes (id, lesson_id, title) VALUES (%s, %s, %s)", quizzes)
     batch_insert("INSERT INTO quiz_questions (id, quiz_id, text, correct_answer) VALUES (%s, %s, %s, %s)", questions)
-    
     print("Courses, lessons, quizzes, and questions inserted successfully")
-
-def generate_enrollments(users):
+    
+    # Generate enrollments
     students = [user for user in users if user[3] == "student"]
-    mycursor.execute("SELECT id FROM courses")
-    course_ids = [row[0] for row in mycursor.fetchall()]
-
     enrollments = []
     for student in students:
         enrolled_courses = random.sample(course_ids, NUM_ENROLLMENTS_PER_USER)
         for course_id in enrolled_courses:
             enrollments.append((fake.uuid4(), student[0], course_id, fake.date_between(start_date='-2y', end_date='today'), f"{random.randint(0, 100)}%"))
     
+    # Insert enrollments
     batch_insert("INSERT INTO enrollments (id, user_id, course_id, enrollment_date, progress) VALUES (%s, %s, %s, %s, %s)", enrollments)
     print("Enrollments generated successfully")
 
-def retrieve_courses():
+def read_all_data():
+    mycursor.execute("SELECT * FROM users")
+    users = mycursor.fetchall()
+    
     mycursor.execute("SELECT * FROM courses")
     courses = mycursor.fetchall()
-    print(f"{len(courses)} courses retrieved successfully")
-    return courses
+    
+    mycursor.execute("SELECT * FROM lessons")
+    lessons = mycursor.fetchall()
+    
+    mycursor.execute("SELECT * FROM quizzes")
+    quizzes = mycursor.fetchall()
+    
+    mycursor.execute("SELECT * FROM quiz_questions")
+    quiz_questions = mycursor.fetchall()
+    
+    mycursor.execute("SELECT * FROM enrollments")
+    enrollments = mycursor.fetchall()
+    
+    print("All data read successfully")
+
+def update_all_data():
+    mycursor.execute("UPDATE users SET name = CONCAT(name, '_updated')")
+    mycursor.execute("UPDATE courses SET title = CONCAT(title, '_updated')")
+    mycursor.execute("UPDATE lessons SET title = CONCAT(title, '_updated')")
+    mycursor.execute("UPDATE quizzes SET title = CONCAT(title, '_updated')")
+    mycursor.execute("UPDATE quiz_questions SET text = CONCAT(text, '_updated')")
+    mycursor.execute("UPDATE enrollments SET progress = CONCAT(progress, '_updated')")
+    mydb.commit()
+    print("All data updated successfully")
+
+def delete_all_data():
+    mycursor.execute("DELETE FROM enrollments")
+    mycursor.execute("DELETE FROM quiz_questions")
+    mycursor.execute("DELETE FROM quizzes")
+    mycursor.execute("DELETE FROM lessons")
+    mycursor.execute("DELETE FROM courses")
+    mycursor.execute("DELETE FROM users")
+    mydb.commit()
+    print("All data deleted successfully")
+
+def plot_timings():
+    operations, durations = zip(*timings)
+
+    plt.figure(figsize=(12, 6))
+    plt.barh(operations, durations, color='skyblue')
+    plt.xlabel('Time (seconds)')
+    plt.title('Performance of MySQL Database Operations')
+    plt.grid(axis='x')
+    plt.show()
+
+def save_timings_to_excel(filename="timings_.xlsx"):
+    timings_df = pd.DataFrame(timings, columns=["Operation", "Duration (seconds)"])
+    timings_df.to_excel(filename, index=False)
+    print(f"Timings saved to {filename} successfully")
 
 def main():
-    measure_time("Create Tables", create_tables)
-    measure_time("Insert Users", insert_users)
-    users = []
-    measure_time("Retrieve Users", lambda: users.extend(retrieve_users()))
-    
-    # Main Create
-    measure_time("Insert Courses, Lessons, Quizzes, and Questions", lambda: insert_courses(users))
-    
-    measure_time("Generate Enrollments", lambda: generate_enrollments(users))
-    # Main Retrive
-    measure_time("Retrieve Courses", retrieve_courses)
-    
-    # Main Delete
+    multiplication = input("Enter how many times to multiply the amount of data: ")
+    if not isinstance(multiplication, int):
+        print("Provided multiplication factor is not an integer. Defaulting to 1.")
+        multiplication = 1
+    edit_number_of_operations(multiplication)
+
     measure_time("Drop Tables", drop_tables)
+    measure_time("Create Tables", create_tables)
+    measure_time("Insert All Data", insert_all_data)
+    measure_time("Read All Data", read_all_data)
+    measure_time("Update All Data", update_all_data)
+    measure_time("Delete All Data", delete_all_data)
+    
     print('Performance test completed')
+
+    save_timings_to_excel("timings_MySQL_{}.xlsx".format(multiplication))
+    plot_timings()
 
 if __name__ == '__main__':
     main()
