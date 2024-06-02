@@ -131,9 +131,11 @@ def insert_all_data():
     users = mycursor.fetchall()
     instructors = [user[0] for user in users if user[3] == "instructor"]
 
-    # Insert courses
+    # Insert courses in chunks to avoid memory issues
     courses = [(fake.uuid4(), fake.catch_phrase(), fake.text(), random.choice(instructors)) for _ in range(NUM_COURSES)]
-    batch_insert("INSERT INTO courses (id, title, description, instructor) VALUES (%s, %s, %s, %s)", courses)
+    chunk_size = 1000
+    for i in range(0, len(courses), chunk_size):
+        batch_insert("INSERT INTO courses (id, title, description, instructor) VALUES (%s, %s, %s, %s)", courses[i:i+chunk_size])
     
     lessons = []
     quizzes = []
@@ -157,10 +159,14 @@ def insert_all_data():
                     question_id = fake.uuid4()
                     questions.append((question_id, quiz_id, fake.sentence(), fake.word()))
 
-    # Insert lessons, quizzes, and questions
-    batch_insert("INSERT INTO lessons (id, course_id, title, content) VALUES (%s, %s, %s, %s)", lessons)
-    batch_insert("INSERT INTO quizzes (id, lesson_id, title) VALUES (%s, %s, %s)", quizzes)
-    batch_insert("INSERT INTO quiz_questions (id, quiz_id, text, correct_answer) VALUES (%s, %s, %s, %s)", questions)
+    # Insert lessons, quizzes, and questions in chunks
+    for i in range(0, len(lessons), chunk_size):
+        batch_insert("INSERT INTO lessons (id, course_id, title, content) VALUES (%s, %s, %s, %s)", lessons[i:i+chunk_size])
+    for i in range(0, len(quizzes), chunk_size):
+        batch_insert("INSERT INTO quizzes (id, lesson_id, title) VALUES (%s, %s, %s)", quizzes[i:i+chunk_size])
+    for i in range(0, len(questions), chunk_size):
+        batch_insert("INSERT INTO quiz_questions (id, quiz_id, text, correct_answer) VALUES (%s, %s, %s, %s)", questions[i:i+chunk_size])
+    
     print("Courses, lessons, quizzes, and questions inserted successfully")
     
     # Generate enrollments
@@ -171,8 +177,10 @@ def insert_all_data():
         for course_id in enrolled_courses:
             enrollments.append((fake.uuid4(), student[0], course_id, fake.date_between(start_date='-2y', end_date='today'), f"{random.randint(0, 100)}%"))
     
-    # Insert enrollments
-    batch_insert("INSERT INTO enrollments (id, user_id, course_id, enrollment_date, progress) VALUES (%s, %s, %s, %s, %s)", enrollments)
+    # Insert enrollments in chunks
+    for i in range(0, len(enrollments), chunk_size):
+        batch_insert("INSERT INTO enrollments (id, user_id, course_id, enrollment_date, progress) VALUES (%s, %s, %s, %s, %s)", enrollments[i:i+chunk_size])
+    
     print("Enrollments generated successfully")
 
 def read_all_data():
